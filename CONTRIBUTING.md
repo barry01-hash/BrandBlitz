@@ -99,7 +99,7 @@ Commits that do not follow Conventional Commits will fail the commit-message lin
 4. **Type-check must pass.** Run `pnpm type-check` locally before pushing.
 5. **Lint must pass.** Run `pnpm lint` locally. The CI gate rejects any ESLint errors.
 6. **No `console.log` in production code.** Use the structured logger (`apps/api/src/lib/logger.ts`) in the API, and `console.error` only for unrecoverable startup errors.
-7. **Keep `.env.example` in sync.** If you add a new environment variable, add it to `.env.example` with an inline comment and update the table in `README.md`.
+7. **Keep `.env.example` in sync.** If you add a new environment variable, add it to `.env.example` with an inline comment and add a row to the Environment Variables table in [`README.md`](./README.md#environment-variables) (Name, Required, Default, Description).
 
 ### PR Description Template
 
@@ -197,6 +197,7 @@ BrandBlitz is built as part of the [Drips programme](https://drips.network). The
 1. **All Stellar integrations must run on testnet during development.** Set `STELLAR_NETWORK=testnet` in your `.env`. Never commit mainnet credentials.
 2. **Every PR that touches Stellar code must include a testnet transaction hash** in the PR description demonstrating the happy path works end-to-end. Use the `stellar-cli` or Stellar Laboratory to verify.
 3. **Payments are real even on testnet.** Use the testnet faucet (`friendbot`) to fund test wallets. Never use real USDC for local testing.
+   Run `STELLAR_NETWORK=testnet pnpm fund:testnet-wallet` (`scripts/fund-testnet-wallet.ts`) to generate a keypair and fund it via friendbot in one step — it refuses to run against any network other than testnet.
 4. **Smart contract changes require a separate PR.** Changes to `contracts/escrow/` must be reviewed by at least two maintainers and include both `cargo test` and `soroban-cli` deploy output.
 5. **Batch payouts must not exceed 50 ops per transaction.** The `MAX_OPS_PER_TX = 50` constant in `packages/stellar/src/constants.ts` is a hard limit — Stellar rejects transactions above this.
 6. **Do not change the escrow contract interface without a migration plan.** Breaking changes to `settle()` or `refund()` affect live brand deposits.
@@ -229,6 +230,63 @@ Link your new runbook from the `docs/runbooks/README.md` index.
 
 ---
 
+## Gitleaks false positives
+
+Commits are blocked by [`scripts/gitleaks.mjs`](../scripts/gitleaks.mjs) via the
+[`.husky/pre-commit`](../.husky/pre-commit) hook (`pnpm gitleaks:pre-commit` — pipes
+`git diff --cached` into `gitleaks detect --pipe --redact --config .gitleaks.toml`).
+If a fixture or test value that *looks* like a secret triggers a false positive (e.g.
+a Stellar `S...` key in a test fixture), add a scoped allowlist entry to
+[`.gitleaks.toml`](../.gitleaks.toml) instead of bypassing the hook.
+
+### Allowlist syntax (`.gitleaks.toml`)
+
+Gitleaks uses TOML. Add a per-rule `[[rules.allowlist]]` (or a global `[allowlist]`)
+with a `description`, `regexes`/`regex`, and/or `paths`. Keep the entry as narrow
+as possible — pin it to a single file/path and a single secret-looking pattern.
+
+**Concrete example — allow a fake Stellar secret only inside test fixtures:**
+
+```toml
+# .gitleaks.toml
+[[rules]]
+id = "stellar-secret-key"
+description = "Stellar secret key (S...)"
+regex = '''\bS[ABCDEFGHIJKLMNOPQRSTUVWXYZ234567]{55}\b'''
+tags = ["stellar", "secret"]
+
+  [[rules.allowlist]]
+  description = "test fixture with fake S... key — not a real secret"
+  # Only suppress inside fixtures; change the path to the file that holds the false positive.
+  paths = ['''apps/api/scripts/fixtures/.*''']
+  # Optionally pin to the exact fake value:
+  # regexes = ['''SBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB''']
+```
+
+Alternative global form (use sparingly):
+
+```toml
+[allowlist]
+description = "allow fake keys in fixtures"
+paths = ['''apps/api/scripts/fixtures/.*''']
+```
+
+After editing `.gitleaks.toml`, re-stage the config and retry the commit — the
+pre-commit hook (`scripts/gitleaks.mjs`) will re-run automatically.
+
+### Do not use `--no-verify`
+
+> **Git Safety Protocol:** never bypass commit hooks with `git commit --no-verify`
+> (or `HUSKY=0`) to silence a gitleaks finding. That disables secret scanning for
+> the entire commit and risks landing a real credential. Always add a scoped
+> allowlist entry as shown above and keep the hook enabled.
+
+See also: [`scripts/gitleaks.mjs`](../scripts/gitleaks.mjs) (binary download + invocation),
+[`.gitleaks.toml`](../.gitleaks.toml) (rule definitions), and
+[`docs/runbooks/leaked-secret.md`](../docs/runbooks/leaked-secret.md) (what to do if a real secret leaked).
+
+---
+
 ## Getting Started
 
 ```bash
@@ -245,7 +303,7 @@ cp .env.example .env
 # STELLAR_HOT_WALLET_SECRET, and PHONE_HASH_SALT at minimum.
 
 # 4. Start infrastructure
-docker compose up postgres redis minio minio-setup
+docker compose --profile infra up
 
 # 4b. (Optional) Seed the database with fixture data — 50 users, 3 brands, 6 challenges, 200 sessions
 pnpm --filter @brandblitz/api seed
@@ -265,6 +323,29 @@ pnpm test
 pnpm type-check
 pnpm lint
 ```
+
+### Fast feedback while iterating (recommended)
+
+For iterative work on a single package, use watch-mode type-checking instead of the full
+monorepo `pnpm type-check`. It runs `tsc --watch --noEmit` in the selected workspace
+and re-checks incrementally on every save:
+
+```bash
+# API only
+pnpm type-check:watch --filter=@brandblitz/api
+
+# Web only
+pnpm type-check:watch --filter=@brandblitz/web
+# Or directly in the workspace:
+pnpm --filter @brandblitz/api type-check:watch
+pnpm --filter @brandblitz/web type-check:watch
+```
+
+The root `type-check:watch` script is a convenience wrapper around `turbo run type-check:watch`
+filtered with `--filter`; pass a different `--filter` value to scope to another workspace.
+Each workspace exposes `type-check:watch` as `tsc --watch --noEmit` (see `apps/api/package.json`
+and `apps/web/package.json`). The existing full `pnpm type-check` (`turbo run type-check`) is unchanged
+and remains the CI gate — use the watch variant only for local iteration.
 
 ### Common Issues
 

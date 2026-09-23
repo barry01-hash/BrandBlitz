@@ -16,6 +16,7 @@ import adminEscrowRoutes from "./admin/escrow";
 import adminAuditLogRoutes from "./admin/audit-log";
 import adminPayoutsRoutes from "./admin/payouts";
 import adminStatsRoutes from "./admin/stats";
+import adminQueueStatsRoutes from "./admin/queue-stats";
 import adminWaitlistRoutes from "./admin/waitlist";
 import adminRoutes from "./admin";
 import deleteAccountRoutes from "./me/delete-account";
@@ -24,6 +25,7 @@ import cspReportRoutes from "./csp-report";
 import legalRoutes from "./legal";
 import configRoutes from "./config";
 import adminCacheRoutes from "./admin/cache";
+import adminTestRoutes from "./admin/test";
 import metricsRoutes from "./metrics";
 import waitlistRoutes from "./waitlist";
 
@@ -54,7 +56,9 @@ export function registerRoutes(app: Express): void {
   app.use("/admin/audit-log", adminAuditLogRoutes);
   app.use("/admin/payouts", adminPayoutsRoutes);
   app.use("/admin/stats", adminStatsRoutes);
+  app.use("/admin/queue-stats", adminQueueStatsRoutes);
   app.use("/admin/waitlist", adminWaitlistRoutes);
+  app.use("/admin/test", adminTestRoutes);
   // General admin endpoints (archive inspection, dead-letter queue triage).
   // Mounted after the more specific /admin/* routers; its own routes
   // (/admin/dlq, /admin/archive/...) do not overlap with them.

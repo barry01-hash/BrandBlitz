@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
+    profiles: ["infra"]
     environment:
       POSTGRES_DB: brandblitz
       POSTGRES_USER: brandblitz
@@ -17,6 +18,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    profiles: ["infra"]
     # `volatile-lru` only evicts keys that carry a TTL. BullMQ dead-letter
     # queue jobs are stored without a TTL (removeOnComplete: false), so DLQ
     # keys are never evicted and are retained well beyond the 7-day
@@ -32,6 +34,7 @@ services:
 
   minio:
     image: minio/minio:latest
+    profiles: ["infra"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-brandblitz}
@@ -46,6 +49,7 @@ services:
 
   minio-setup:
     image: minio/mc:latest
+    profiles: ["infra"]
     depends_on:
       minio:
         condition: service_healthy
